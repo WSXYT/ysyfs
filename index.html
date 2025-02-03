@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>B站粉丝监控</title>
+    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.4.2/echarts.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+</head>
+<body>
+    <div id="chart" style="height:600px; width:100%"></div>
+    <div id="message" style="font-size:24px; color:red; text-align:center"></div>
+
+    <div style="text-align:center; margin:20px">
+        <button onclick="changeRange('24h')">24小时</button>
+        <button onclick="changeRange('7d')">7天</button>
+        <button onclick="changeRange('30d')">30天</button>
+    </div>
+
+    <script>
+        let chart = echarts.init(document.getElementById('chart'));
+        let currentRange = '24h';
+        let lastFans = null;
+
+        // 初始化图表配置
+        let option = {
+            title: { text: 'B站粉丝数量变化' },
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['粉丝数', '变化量'] },
+            xAxis: { type: 'time' },
+            yAxis: { type: 'value' },
+            series: [
+                {
+                    name: '粉丝数',
+                    type: 'line',
+                    showSymbol: true,
+                    symbolSize: 8,
+                    lineStyle: { width: 3 },
+                    label: {
+                        show: true,
+                        position: 'top',
+                        formatter: function(params) {
+                            if (params.dataIndex > 0) {
+                                let diff = params.value[1] - lastFans;
+                                return `${params.value[1]}\n(${diff > 0 ? '+' : ''}${diff})`;
+                            }
+                            return params.value[1];
+                        }
+                    }
+                },
+                {
+                    name: '变化量',
+                    type: 'bar',
+                    barWidth: '60%',
+                    itemStyle: {
+                        color: function(params) {
+                            return params.value > 0 ? '#91cc75' : '#ee6666';
+                        }
+                    }
+                }
+            ],
+            dataZoom: [
+                { type: 'slider', xAxisIndex: 0, filterMode: 'filter' },
+                { type: 'inside' }
+            ]
+        };
+
+        // 获取数据
+        function fetchData() {
+            $.get('/get_data?range=' + currentRange, function(response){
+                let timestamps = response.timestamps;
+                let fansData = response.fans;
+                
+                // 动态计算 Y 轴范围
+                let minFans = Math.min(...fansData) - 10;
+                let maxFans = Math.max(...fansData) + 10;
+
+                // 更新配置
+                option.yAxis = { min: minFans, max: maxFans, splitNumber: 8 };
+                
+                // 更新系列数据
+                option.series[0].data = timestamps.map((t, i) => [t, fansData[i]]);
+                option.series[1].data = fansData.map((v, i) => i === 0 ? 0 : v - fansData[i-1]);
+
+                chart.setOption(option);
+
+                // 更新提示信息
+                let currentFans = fansData[fansData.length-1];
+                if(lastFans !== null && currentFans < lastFans) {
+                    let diff = lastFans - currentFans;
+                    $('#message').text(`哦耶！ysy又少了${diff}粉丝`);
+                }
+                lastFans = currentFans;
+            });
+        }
+
+        // 切换时间范围
+        function changeRange(range) {
+            currentRange = range;
+            fetchData();
+        }
+
+        // 定时刷新
+        setInterval(fetchData, 10000);
+        fetchData();
+    </script>
+</body>
+</html>
